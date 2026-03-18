@@ -1,4 +1,5 @@
-✈️ RoamBudget
+
+#✈️ RoamBudget
 RoamBudget is a full-stack group travel expense coordinator designed to help friends track, split, and manage trip costs in real-time. No more "who owes what" spreadsheets—just a clean interface to keep the trip stress-free.
 
 🚀 Features
