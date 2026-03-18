@@ -1,19 +1,12 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from supabase import create_client, Client
-from typing import Optional, List
 import os
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from supabase import create_client, Client
+from pydantic import BaseModel
 
-# Initialize the FastAPI app with your custom project title
-app = FastAPI(
-    title="RoamBudget API", 
-    description="Dedicated backend for the RoamBudget group trip expense tracker."
-)
+app = FastAPI(title="RoamBudget Secure API")
 
-# --- Middleware Configuration ---
-# CRITICAL: Setting allow_origins to ["*"] allows your GitHub Pages 
-# site to access this API from the browser.
+# Enable CORS for GitHub Pages
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,81 +15,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Supabase Connection ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("Missing SUPABASE_URL or SUPABASE_KEY environment variables in Render.")
+# This helper function creates a Supabase client using the USER'S token
+def get_supabase_client(auth_header: str):
+    if not auth_header:
+        raise HTTPException(status_code=401, detail="Missing Authorization Header")
+    
+    # Extract 'Bearer <token>'
+    token = auth_header.replace("Bearer ", "")
+    
+    # We create a client that uses the user's JWT instead of the master key
+    return create_client(
+        SUPABASE_URL, 
+        SUPABASE_KEY, 
+        options={"headers": {"Authorization": f"Bearer {token}"}}
+    )
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# --- ROAMBUDGET MODELS ---
 class ExpenseCreate(BaseModel):
-    item_name: str = Field(..., min_length=1, max_length=100)
-    category: str = Field(..., min_length=1, max_length=50)
-    amount: float = Field(..., gt=0)
-    paid_by: str = Field(..., min_length=1)
-    split_count: int = Field(1, ge=1)
-    is_booked: bool = False
-
-class ExpenseUpdate(BaseModel):
-    item_name: Optional[str] = None
-    category: Optional[str] = None
-    amount: Optional[float] = None
-    paid_by: Optional[str] = None
-    split_count: Optional[int] = None
-    is_booked: Optional[bool] = None
-
-# --- ROOT ENDPOINT ---
-@app.get("/")
-async def root():
-    return {
-        "project": "RoamBudget",
-        "status": "online",
-        "docs": "/docs"
-    }
-
-# --- EXPENSES ENDPOINTS ---
+    item_name: str
+    amount: float
+    category: str
+    paid_by: str
+    split_count: int = 1
 
 @app.get("/expenses")
-async def list_expenses():
-    """Fetch all trip expenses from the Supabase 'trip_expenses' table."""
-    response = supabase.table("trip_expenses").select("*").order("id").execute()
+async def get_expenses(authorization: str = Header(None)):
+    client = get_supabase_client(authorization)
+    response = client.table("trip_expenses").select("*").execute()
     return response.data
 
-@app.post("/expenses", status_code=201)
-async def create_expense(expense: ExpenseCreate):
-    """Add a new trip expense to the database."""
-    payload = expense.model_dump()
-    response = supabase.table("trip_expenses").insert(payload).execute()
-    
-    if not response.data:
-        raise HTTPException(status_code=400, detail="Failed to create expense entry.")
-    
-    return response.data[0]
-
-@app.patch("/expenses/{expense_id}")
-async def update_expense(expense_id: int, expense: ExpenseUpdate):
-    """Update specific fields of an existing expense (e.g., mark as booked)."""
-    update_data = expense.model_dump(exclude_none=True)
-    
-    if not update_data:
-        raise HTTPException(status_code=400, detail="No fields provided for update.")
-
-    response = supabase.table("trip_expenses").update(update_data).eq("id", expense_id).execute()
-
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Expense not found.")
-
+@app.post("/expenses")
+async def add_expense(expense: ExpenseCreate, authorization: str = Header(None)):
+    client = get_supabase_client(authorization)
+    # user_id is automatically handled by the DB DEFAULT auth.uid()
+    response = client.table("trip_expenses").insert(expense.dict()).execute()
     return response.data[0]
 
 @app.delete("/expenses/{expense_id}")
-async def delete_expense(expense_id: int):
-    """Remove an expense from the database."""
-    response = supabase.table("trip_expenses").delete().eq("id", expense_id).execute()
+async def delete_expense(expense_id: int, authorization: str = Header(None)):
+    client = get_supabase_client(authorization)
+    response = client.table("trip_expenses").delete().eq("id", expense_id).execute()
+    return {"status": "deleted"}
 
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Expense not found.")
-
-    return {"message": "Expense deleted successfully from RoamBudget."}
+@app.get("/")
+def root():
+    return {"status": "RoamBudget Secure API Online"}
