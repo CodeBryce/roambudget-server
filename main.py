@@ -1,44 +1,52 @@
 import os
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from supabase import create_client, Client
+from supabase import create_client, Client, ClientOptions
 from pydantic import BaseModel
 from typing import List, Optional
 
 app = FastAPI(title="RoamBudget Secure API")
 
-# 1. UPDATED CORS: Allow all for testing to bypass the browser block
+# 1. CORS Configuration
+# Set to ["*"] temporarily to ensure your GitHub Pages can communicate 
+# during this testing phase.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# 2. Environment Variables
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# 3. Helper Function to create a User-Specific Client
 def get_user_client(auth_header: str):
-    # Log the header to Render logs so we can see if it's actually arriving
+    # Log the header to Render logs to confirm it is arriving from the frontend
     print(f"DEBUG: Auth Header received: {auth_header[:20] if auth_header else 'NONE'}")
     
     if not auth_header or "Bearer " not in auth_header:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
     
     try:
+        # Extract the JWT token
         token = auth_header.split(" ")[1]
-        # Ensure these variables actually exist
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            print("DEBUG: ERROR - Supabase URL or Key is MISSING in Render Env Vars")
-            raise Exception("Server configuration error: Missing Supabase credentials")
-            
+        
+        # FIX: We must use ClientOptions object, not a plain dictionary
+        opts = ClientOptions(headers={"Authorization": f"Bearer {token}"})
+        
         return create_client(
             SUPABASE_URL, 
             SUPABASE_KEY, 
-            options={"headers": {"Authorization": f"Bearer {token}"}}
+            options=opts
         )
     except Exception as e:
         print(f"DEBUG: Failed to create Supabase client: {e}")
-        raise HTTPException(status_code=500, detail="Internal Client Error")
+        raise HTTPException(status_code=500, detail=str(e))
 
+# 4. Data Models
 class ExpenseCreate(BaseModel):
     item_name: str
     amount: float
@@ -46,29 +54,32 @@ class ExpenseCreate(BaseModel):
     paid_by: str
     split_count: int = 1
 
+# 5. Routes
+
 @app.get("/expenses")
 async def get_expenses(authorization: str = Header(None)):
     try:
         client = get_user_client(authorization)
+        # RLS in Supabase ensures this only returns the user's data
         response = client.table("trip_expenses").select("*").execute()
         return response.data
     except Exception as e:
+        print(f"GET Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/expenses")
 async def add_expense(expense: ExpenseCreate, authorization: str = Header(None)):
     try:
         client = get_user_client(authorization)
-        # Convert Pydantic model to dict
         data = expense.dict()
         response = client.table("trip_expenses").insert(data).execute()
         
         if not response.data:
-            raise HTTPException(status_code=400, detail="Failed to insert data")
+            raise HTTPException(status_code=400, detail="Insert failed")
             
         return response.data[0]
     except Exception as e:
-        print(f"Error: {e}") # This shows up in Render Logs
+        print(f"POST Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/expenses/{expense_id}")
@@ -78,6 +89,7 @@ async def delete_expense(expense_id: int, authorization: str = Header(None)):
         client.table("trip_expenses").delete().eq("id", expense_id).execute()
         return {"status": "deleted"}
     except Exception as e:
+        print(f"DELETE Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
