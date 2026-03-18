@@ -5,13 +5,18 @@ from typing import Optional, List
 import os
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="RoamBudget API", description="Independent API for tracking group trip expenses")
+# Initialize the FastAPI app with your custom project title
+app = FastAPI(
+    title="RoamBudget API", 
+    description="Dedicated backend for the RoamBudget group trip expense tracker."
+)
 
 # --- Middleware Configuration ---
-# Updated to allow all origins so your GitHub Pages site can talk to it easily
+# CRITICAL: Setting allow_origins to ["*"] allows your GitHub Pages 
+# site to access this API from the browser.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -22,7 +27,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("Missing SUPABASE_URL or SUPABASE_KEY environment variables")
+    raise RuntimeError("Missing SUPABASE_URL or SUPABASE_KEY environment variables in Render.")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -47,50 +52,51 @@ class ExpenseUpdate(BaseModel):
 @app.get("/")
 async def root():
     return {
-        "message": "RoamBudget API is live",
-        "documentation": "/docs"
+        "project": "RoamBudget",
+        "status": "online",
+        "docs": "/docs"
     }
 
 # --- EXPENSES ENDPOINTS ---
 
 @app.get("/expenses")
 async def list_expenses():
-    """Fetch all trip expenses from the database."""
+    """Fetch all trip expenses from the Supabase 'trip_expenses' table."""
     response = supabase.table("trip_expenses").select("*").order("id").execute()
     return response.data
 
 @app.post("/expenses", status_code=201)
 async def create_expense(expense: ExpenseCreate):
-    """Add a new trip expense."""
+    """Add a new trip expense to the database."""
     payload = expense.model_dump()
     response = supabase.table("trip_expenses").insert(payload).execute()
     
     if not response.data:
-        raise HTTPException(status_code=400, detail="Failed to create expense")
+        raise HTTPException(status_code=400, detail="Failed to create expense entry.")
     
     return response.data[0]
 
 @app.patch("/expenses/{expense_id}")
 async def update_expense(expense_id: int, expense: ExpenseUpdate):
-    """Update specific fields of an existing expense."""
+    """Update specific fields of an existing expense (e.g., mark as booked)."""
     update_data = expense.model_dump(exclude_none=True)
     
     if not update_data:
-        raise HTTPException(status_code=400, detail="No fields provided for update")
+        raise HTTPException(status_code=400, detail="No fields provided for update.")
 
     response = supabase.table("trip_expenses").update(update_data).eq("id", expense_id).execute()
 
     if not response.data:
-        raise HTTPException(status_code=404, detail="Expense not found")
+        raise HTTPException(status_code=404, detail="Expense not found.")
 
     return response.data[0]
 
 @app.delete("/expenses/{expense_id}")
 async def delete_expense(expense_id: int):
-    """Remove an expense from the trip plan."""
+    """Remove an expense from the database."""
     response = supabase.table("trip_expenses").delete().eq("id", expense_id).execute()
 
     if not response.data:
-        raise HTTPException(status_code=404, detail="Expense not found")
+        raise HTTPException(status_code=404, detail="Expense not found.")
 
-    return {"message": "Expense deleted successfully"}
+    return {"message": "Expense deleted successfully from RoamBudget."}
