@@ -15,8 +15,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SUPABASE_URL = os.getenv("https://nlxpcmogqbbmpnowfwhi.supabase.co")
-SUPABASE_KEY = os.getenv("sb_publishable_ecsDJAqahlrSgS4I7KN88g_Ds2AhvCh")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 # This helper function creates a Supabase client using the USER'S token
 def get_supabase_client(auth_header: str):
