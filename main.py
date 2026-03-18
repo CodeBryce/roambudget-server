@@ -16,21 +16,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
 def get_user_client(auth_header: str):
+    # Log the header to Render logs so we can see if it's actually arriving
+    print(f"DEBUG: Auth Header received: {auth_header[:20] if auth_header else 'NONE'}")
+    
     if not auth_header or "Bearer " not in auth_header:
-        raise HTTPException(status_code=401, detail="Invalid token format")
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
     
-    # Split "Bearer <token>" and take the second part
-    token = auth_header.split(" ")[1]
-    
-    return create_client(
-        SUPABASE_URL, 
-        SUPABASE_KEY, 
-        options={"headers": {"Authorization": f"Bearer {token}"}}
-    )
+    try:
+        token = auth_header.split(" ")[1]
+        # Ensure these variables actually exist
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            print("DEBUG: ERROR - Supabase URL or Key is MISSING in Render Env Vars")
+            raise Exception("Server configuration error: Missing Supabase credentials")
+            
+        return create_client(
+            SUPABASE_URL, 
+            SUPABASE_KEY, 
+            options={"headers": {"Authorization": f"Bearer {token}"}}
+        )
+    except Exception as e:
+        print(f"DEBUG: Failed to create Supabase client: {e}")
+        raise HTTPException(status_code=500, detail="Internal Client Error")
 
 class ExpenseCreate(BaseModel):
     item_name: str
