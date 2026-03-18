@@ -1,8 +1,7 @@
-
-#✈️ RoamBudget
+# ✈️ RoamBudget
 RoamBudget is a full-stack group travel expense coordinator designed to help friends track, split, and manage trip costs in real-time. No more "who owes what" spreadsheets—just a clean interface to keep the trip stress-free.
 
-🚀 Features
+## 🚀 Features
 Real-time Tracking: Add expenses instantly as they happen.
 
 Automatic Splitting: Calculates "Cost Per Person" dynamically based on group size.
@@ -13,7 +12,7 @@ Mobile Responsive: A Tailwind-powered frontend that works on any device.
 
 RESTful API: A high-performance FastAPI backend connected to a PostgreSQL database.
 
-🛠️ Tech Stack
+## 🛠️ Tech Stack
 Backend: FastAPI (Python)
 
 Database: Supabase (PostgreSQL)
@@ -22,7 +21,7 @@ Frontend: HTML5, JavaScript (ES6+), and Tailwind CSS
 
 Deployment: Render (API) and GitHub Pages (Web)
 
-📖 API Documentation
+## 📖 API Documentation
 The API follows REST principles and includes built-in Swagger documentation:
 
 Base URL: https://your-new-render-url.onrender.com
