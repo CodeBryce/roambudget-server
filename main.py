@@ -20,8 +20,20 @@ app.add_middleware(
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Confirmed via Supabase dashboard screenshot: table is "trip_expenses"
+# Confirmed via Supabase dashboard: table is "trip_expenses"
 EXPENSES_TABLE = "trip_expenses"
+
+# ── STARTUP CHECK — catches missing env vars before any request hits ──
+@app.on_event("startup")
+async def startup_check():
+    missing = [k for k, v in {"SUPABASE_URL": SUPABASE_URL, "SUPABASE_KEY": SUPABASE_KEY}.items() if not v]
+    if missing:
+        raise RuntimeError(
+            f"Missing required environment variables on Render: {', '.join(missing)}. "
+            "Go to Render Dashboard -> your service -> Environment -> Add these vars."
+        )
+    print(f"RoamBudget API started. Supabase: {SUPABASE_URL[:40]}...")
+
 
 # ── AUTH HELPER ───────────────────────────────────────────────────────
 def get_user_client(auth_header: Optional[str]) -> Client:
@@ -44,61 +56,68 @@ class ExpenseCreate(BaseModel):
     amount:      float
     category:    str
     paid_by:     str
-    split_count: int = 1   # How many people this expense is split between
-    trip_id:     str       # Groups expenses under a shared trip
+    split_count: int = 1
+    trip_id:     str
 
 
 # ── ROUTES ────────────────────────────────────────────────────────────
 
 @app.get("/")
 def root():
-    return {"message": "RoamBudget API is online"}
+    return {
+        "message":  "RoamBudget API is online",
+        "table":    EXPENSES_TABLE,
+        "supabase": SUPABASE_URL[:40] if SUPABASE_URL else "NOT SET — check Render env vars",
+    }
 
 
 @app.get("/expenses/{trip_id}")
 async def get_expenses(trip_id: str, authorization: str = Header(None)):
-    """Returns all expenses for a given trip_id, ordered oldest-first."""
+    """Returns all expenses for a given trip_id, ordered by id ascending."""
     client = get_user_client(authorization)
     try:
         response = (
             client.table(EXPENSES_TABLE)
             .select("*")
             .eq("trip_id", trip_id)
-            .order("created_at", desc=False)   # oldest first; remove if no created_at column
+            .order("id", desc=False)   # int8 PK — always exists, no created_at needed
             .execute()
         )
         return response.data
     except Exception as e:
-        print(f"GET /expenses/{trip_id} error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"GET /expenses/{trip_id} error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
 
 @app.post("/expenses", status_code=201)
 async def add_expense(expense: ExpenseCreate, authorization: str = Header(None)):
-    """Inserts a new expense row tagged with a trip_id."""
+    """Inserts a new expense tagged with a trip_id."""
     client = get_user_client(authorization)
     try:
         response = client.table(EXPENSES_TABLE).insert(expense.dict()).execute()
         if not response.data:
-            raise HTTPException(status_code=400, detail="Insert returned no data — check RLS policies")
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Insert returned no data. Check your Supabase RLS policy — "
+                    "authenticated users need INSERT permission on trip_expenses."
+                )
+            )
         return response.data[0]
     except HTTPException:
         raise
     except Exception as e:
-        print(f"POST /expenses error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"POST /expenses error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
 
 @app.delete("/expenses/{expense_id}")
 async def delete_expense(expense_id: int, authorization: str = Header(None)):
-    """
-    Deletes a single expense by its id.
-    Schema confirmed: id is int8, so this correctly types as int.
-    """
+    """Deletes a single expense. id is int8 in Supabase, typed as int here."""
     client = get_user_client(authorization)
     try:
         client.table(EXPENSES_TABLE).delete().eq("id", expense_id).execute()
         return {"status": "deleted", "id": expense_id}
     except Exception as e:
-        print(f"DELETE /expenses/{expense_id} error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"DELETE /expenses/{expense_id} error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
