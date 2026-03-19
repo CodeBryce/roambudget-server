@@ -165,3 +165,92 @@ async def delete_trip(trip_code: str, authorization: str = Header(None)):
     except Exception as e:
         print(f"DELETE /trips/{trip_code} error: {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+
+# ── Members ───────────────────────────────────────────────────────────
+
+@app.get("/members/{trip_code}")
+async def get_members(trip_code: str, authorization: str = Header(None)):
+    """
+    Returns all members of a trip with their display_name and avatar_color
+    pulled from Supabase auth user_metadata.
+
+    Flow:
+      1. Resolve trip_code → trips.id (uuid)
+      2. Query trip_members for all user_ids in that trip
+      3. For each user_id, call the Supabase Admin API to read user_metadata
+         (requires SUPABASE_SERVICE_KEY — a separate env var from the anon key)
+    """
+    import os, httpx
+
+    SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+    if not SERVICE_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="SUPABASE_SERVICE_KEY env var is not set on Render. "
+                   "Add it in Render → Environment (use your Supabase service_role key)."
+        )
+
+    # Verify the caller is authenticated
+    client = get_user_client(authorization)
+
+    try:
+        # 1. Resolve trip_code → trip uuid
+        trip_resp = (
+            client.table(TRIPS_TABLE)
+            .select("id")
+            .eq("trip_code", trip_code)
+            .single()
+            .execute()
+        )
+        if not trip_resp.data:
+            raise HTTPException(status_code=404, detail=f"Trip '{trip_code}' not found.")
+        trip_uuid = trip_resp.data["id"]
+
+        # 2. Get all user_ids for this trip
+        members_resp = (
+            client.table(MEMBERS_TABLE)
+            .select("user_id")
+            .eq("trip_id", trip_uuid)
+            .execute()
+        )
+        user_ids = [m["user_id"] for m in (members_resp.data or [])]
+        if not user_ids:
+            return []
+
+        # 3. Fetch user metadata via Supabase Admin API for each user_id
+        #    Supabase Admin REST: GET /auth/v1/admin/users/{user_id}
+        result = []
+        headers = {
+            "apikey":        SERVICE_KEY,
+            "Authorization": f"Bearer {SERVICE_KEY}",
+        }
+        async with httpx.AsyncClient() as http:
+            for uid in user_ids:
+                r = await http.get(
+                    f"{SUPABASE_URL}/auth/v1/admin/users/{uid}",
+                    headers=headers,
+                    timeout=5.0
+                )
+                if r.status_code == 200:
+                    user_data = r.json()
+                    meta = user_data.get("user_metadata", {})
+                    result.append({
+                        "user_id":      uid,
+                        "display_name": meta.get("display_name", ""),
+                        "avatar_color": meta.get("avatar_color", "#6366f1"),
+                    })
+                else:
+                    # User exists in members but metadata fetch failed — include with fallback
+                    result.append({
+                        "user_id":      uid,
+                        "display_name": "",
+                        "avatar_color": "#6366f1",
+                    })
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"GET /members/{trip_code} error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
