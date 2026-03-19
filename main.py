@@ -5,11 +5,9 @@ from supabase import create_client, Client, ClientOptions
 from pydantic import BaseModel
 from typing import List, Optional
 
-app = FastAPI(title="RoamBudget Secure API")
+app = FastAPI(title="RoamBudget Secure Shared API")
 
 # 1. CORS Configuration
-# Set to ["*"] temporarily to ensure your GitHub Pages can communicate 
-# during this testing phase.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,17 +22,13 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 # 3. Helper Function to create a User-Specific Client
 def get_user_client(auth_header: str):
-    # Log the header to Render logs to confirm it is arriving from the frontend
     print(f"DEBUG: Auth Header received: {auth_header[:20] if auth_header else 'NONE'}")
     
     if not auth_header or "Bearer " not in auth_header:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
     
     try:
-        # Extract the JWT token
         token = auth_header.split(" ")[1]
-        
-        # FIX: We must use ClientOptions object, not a plain dictionary
         opts = ClientOptions(headers={"Authorization": f"Bearer {token}"})
         
         return create_client(
@@ -53,15 +47,17 @@ class ExpenseCreate(BaseModel):
     category: str
     paid_by: str
     split_count: int = 1
+    trip_id: str  # NEW: Links the expense to a shared trip
 
 # 5. Routes
 
-@app.get("/expenses")
-async def get_expenses(authorization: str = Header(None)):
+@app.get("/expenses/{trip_id}")
+async def get_expenses(trip_id: str, authorization: str = Header(None)):
+    """Fetches all expenses for a specific shared trip ID."""
     try:
         client = get_user_client(authorization)
-        # RLS in Supabase ensures this only returns the user's data
-        response = client.table("trip_expenses").select("*").execute()
+        # We filter by trip_id so everyone in the group sees the same list
+        response = client.table("trip_expenses").select("*").eq("trip_id", trip_id).execute()
         return response.data
     except Exception as e:
         print(f"GET Error: {e}")
@@ -69,6 +65,7 @@ async def get_expenses(authorization: str = Header(None)):
 
 @app.post("/expenses")
 async def add_expense(expense: ExpenseCreate, authorization: str = Header(None)):
+    """Inserts an expense tagged with a trip_id."""
     try:
         client = get_user_client(authorization)
         data = expense.dict()
@@ -94,4 +91,4 @@ async def delete_expense(expense_id: int, authorization: str = Header(None)):
 
 @app.get("/")
 def root():
-    return {"message": "RoamBudget Auth API is Online"}
+    return {"message": "RoamBudget Shared Auth API is Online"}
