@@ -20,9 +20,8 @@ app.add_middleware(
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# BUG FIX: Your schema says the table is called "expenses", not "trip_expenses".
-# Update this constant to match whatever your Supabase table is actually named.
-EXPENSES_TABLE = "expenses"
+# Confirmed via Supabase dashboard screenshot: table is "trip_expenses"
+EXPENSES_TABLE = "trip_expenses"
 
 # ── AUTH HELPER ───────────────────────────────────────────────────────
 def get_user_client(auth_header: Optional[str]) -> Client:
@@ -91,10 +90,10 @@ async def add_expense(expense: ExpenseCreate, authorization: str = Header(None))
 
 
 @app.delete("/expenses/{expense_id}")
-async def delete_expense(expense_id: str, authorization: str = Header(None)):
+async def delete_expense(expense_id: int, authorization: str = Header(None)):
     """
     Deletes a single expense by its id.
-    BUG FIX: expense_id is a UUID (text), not an int — changed param type from int to str.
+    Schema confirmed: id is int8, so this correctly types as int.
     """
     client = get_user_client(authorization)
     try:
