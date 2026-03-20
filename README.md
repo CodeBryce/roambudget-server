@@ -1,27 +1,27 @@
-# RoamBudget API ✈️
-A secure, multi-tenant FastAPI backend for the RoamBudget group expense tracker. 
+# RoamBudget - API Server
 
-This server acts as the secure bridge between the frontend and Supabase, utilizing **JWT-based authentication** to ensure strict data isolation between users.
+The backend engine for **RoamBudget**, responsible for secure data transactions, trip management, and expense logic. Built with **FastAPI** and designed to run on **Render**.
 
 ## 🚀 Features
-- **Stateless CRUD:** Full Create, Read, and Delete operations for trip expenses.
-- **JWT Middleware:** Custom logic to validate Supabase authentication tokens for every request.
-- **Data Isolation:** Implements PostgreSQL **Row Level Security (RLS)** to automatically filter data based on the authenticated user's UUID.
-- **CORS Configuration:** Optimized for secure cross-origin communication with GitHub Pages.
+- **Secure Expense Management**: Handles POST and DELETE operations for expenses with Bearer Token authentication.
+- **Trip Operations**: API endpoints for managing trip data and cascading deletions when a trip is removed by its creator.
+- **Auth Integration**: Decodes Supabase JWTs to verify user identity without unnecessary network calls.
+- **CORS Enabled**: Configured to allow secure communication with the frontend domain.
 
 ## 🛠️ Tech Stack
-- **Framework:** FastAPI (Python 3.11+)
-- **Database:** PostgreSQL via Supabase
-- **Authentication:** Supabase Auth (JWT)
-- **Deployment:** Render (Web Service)
-- **Server Gateway:** Uvicorn
+- **Framework**: FastAPI (Python)
+- **Server**: Uvicorn
+- **Client**: Supabase-py
+- **Authentication**: Supabase Auth (JWT)
 
 ## ⚙️ Environment Variables
-Required configurations for deployment:
-- `SUPABASE_URL`: The project-specific Supabase URL.
-- `SUPABASE_KEY`: The project's public anonymous key.
+The following variables must be configured in your **Render** environment settings:
+- `SUPABASE_URL`: Your Supabase Project URL.
+- `SUPABASE_KEY`: Your Supabase Service Role key (for administrative operations).
+- `EXPENSES_TABLE`: Set to `trip_expenses`.
+- `TRIPS_TABLE`: Set to `trips`.
+- `MEMBERS_TABLE`: Set to `trip_members`.
 
-## 🛠️ Local Development
-1. Clone the repository: `git clone <repo-url>`
-2. Install requirements: `pip install -r requirements.txt`
-3. Launch the server: `uvicorn main:app --reload`
+## 📦 Local Setup
+1. Install dependencies: `pip install -r requirements.txt`
+2. Start the server: `uvicorn main:app --reload`
